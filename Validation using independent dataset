@@ -1,0 +1,367 @@
+# Note- the independent dataset was preprocessed using three different methods as shown below
+# SINGLE SAMPLE PROCESSING PIPELINE
+library(dplyr)
+library(FNN)
+library(limma)
+library(ggfortify)
+library(sva)
+#SINGLE SAMPLE SAFE
+setwd(" ")
+# reading train data
+Dum=readRDS("train1.batch-corrected.rds")
+p.dum=Dum[c(11069:11072),]
+p.dum=as.data.frame(t(p.dum))
+dum=Dum[-c(11069:11072),]
+Dum=Dum[-c(11069:11072),]
+#reading pheno data for independent test data 
+p.test=read.csv("p.exv.csv")
+# READING INDEPENDENT TEST DATA
+test=readRDS("76826.rds")
+# READING TEST DATA (NON NORMALISED) TO SERVE AS A DUMMY DATA
+#NOTE - test data mentioned above is saved as a variable called train in this script
+train=readRDS("test1.rds")
+train=t(train)
+ref=train[-c(1:4),]
+p.train=train[c(1:4),]
+p.train=as.data.frame(t(p.train))
+
+#sub setting THE DATA TO HAVE THE SAME NUMBER OF GENES 
+Train=train[intersect(rownames(train),rownames(test)),]
+test=test[intersect(rownames(train),rownames(test)),]
+dum=dum[intersect(rownames(test),rownames(dum)),]
+#CREATION OF EMPTY DATASET TO HOUSE THE NEW NORMALISED AND BATCH CORRECTED INDEPENDENT TEST DATA
+v.data=data.frame()
+###NORMALISATION AND BATCH CORRECTION IN LOOP WITH DUMMY DATA
+for (x in 1:dim(test)[2]) {
+  v1=test[,x,drop=F]
+  ref=Train
+  ref=cbind(ref,v1)
+  ref=as.matrix(ref)
+  class(ref)="numeric"
+  ref=log2(ref)
+  ref=preprocessCore::normalize.quantiles(ref,copy = T,keep.names = T)
+  ref=as.matrix(ref)
+  data=cbind(dum,ref)  
+  p.data=rbind(p.dum,p.train,p.test[x,])
+  p.data$ref=1
+  p.data$ref[379:420]=2
+  mod=model.matrix(~1,data=p.data)
+  data=as.matrix(data)
+  class(data)="numeric"
+  Data=ComBat(dat=data,batch = p.data$ref,mod = mod,par.prior = T,prior.plots = F,ref.batch = "1")
+  v.data=rbind(v.data,t(Data[,420,drop=F]))
+}
+#NEW EMPTY DATA FRAME TO SAME THE SAMPLES AFTER IMPIUTATION
+v2=data.frame()
+#IMPUTATION WITH KNN IN A LOOP
+for (x in 1:dim(test)[2]) {
+  #kNN
+  
+  
+  train=dum
+  train=as.matrix(train)
+  norm.dat=v.data[x,,drop=F]
+  norm.dat=as.data.frame(t(norm.dat))
+  group=as.factor(p.dum$group)
+  class(train)="numeric"
+  Train=as.data.frame(train)
+  k <- knn(t(Train),t(norm.dat), factor(p.dum[,2]), k = 10, algorithm="cover_tree")
+  indices = attr(k, "nn.index")
+  
+  print(indices[1, ])
+  dists = attr(k, "nn.dist")
+  print(dists[1, ])
+  n=indices[1,1]
+  Norm.dat=t(norm.dat)
+  train=Dum[-c(11069:11072),]
+  sub=setdiff(rownames(train),colnames(Norm.dat))
+  sub=as.data.frame(sub)
+  sub[colnames(norm.dat)]=NA
+  row.names(sub)=sub$sub
+  sub=sub[,2,drop=F]
+  sub[1]=train[intersect(row.names(train),row.names(sub)),n,drop=F]
+  dat=rbind(sub,t(Norm.dat))
+  v2=rbind(v2,t(dat))
+  
+}
+ v2=as.matrix(v2)
+class(v2)="numeric"
+saveRDS(v2,"ex3.rds")
+boxplot(t(v2),outline=F)
+
+ab=cbind(train,t(v2))
+ab=as.matrix(ab)
+class(ab)="numeric"
+abc=prcomp(t(ab),scale. = T)
+autoplot(abc)
+# PCA for thesis 
+data=cbind(Dum,t(v2))
+a=rbind(p.dum,p.test)
+a$ref=1
+a$ref[379:400]=2
+mod=model.matrix(~1,data=a)
+data=as.matrix(data)
+class(data)="numeric"
+Data=ComBat(dat=data,batch = a$ref,mod = mod,par.prior = T,prior.plots = F,ref.batch = "1")
+a$sample="train"
+a$sample[379:400]="independant test data"
+abc=prcomp(t(Data),scale. = T)
+autoplot(abc,data=a,color="sample")+ theme_bw()
+
+#############################################################################################################################################################################################################################
+#IMPUTATION  BEFORE BATCH CORRECTION
+library(sva)
+library(ggplot2)
+library(ggfortify)
+library(tidyverse)
+library(preprocessCore)
+library(FNN)
+## this script is imputation before batch correction , and it is not single sample compatable
+setwd(" ")
+# reading data   
+data=readRDS("76826.rds") # independent dataset
+train1=readRDS("train1.batch-corrected.rds")
+train=readRDS("train1.rds")
+train=train[,-c(1:4)]
+p.train=train1[c(11069:11072),]
+p.train=as.data.frame(t(p.train))
+train1=train1[-c(11069:11072),]
+p.dat=read.csv("p.exv.csv")
+data=as.matrix(data)
+class(data)="numeric"
+data=log2(data)
+train=as.matrix(train)
+class(train)="numeric"
+train=log2(train)
+data=data[intersect(rownames(data),rownames(train1)),]
+###########################normalisation################################
+trainn=normalize.quantiles(t(train),keep.names = T,copy = T)
+train=trainn[intersect(rownames(data),rownames(trainn)),]
+targets=normalize.quantiles.determine.target(train,target.length = NULL,subset = NULL)
+Data=normalize.quantiles.use.target(data,targets)
+dimnames(Data)=dimnames(data)
+boxplot(Data,outline=F)
+boxplot(trainn,outline=F) 
+###########################imputation############################
+v.data=data.frame()
+train=t(train)
+Dat=t(Data)
+for (x in 1:dim(Dat)[1]) {
+  #kNN
+  Train=trainn[intersect(rownames(trainn),colnames(Dat)),]
+  norm.dat=Dat[x,,drop=F]
+  train=as.data.frame(t(Train))
+  norm.dat=as.data.frame(t(norm.dat))
+  Train=as.data.frame(Train)
+  Train=as.matrix(Train)
+  class(Train)="numeric"
+  #Train=2^Train
+  k <- knn((t(Train)),t(norm.dat), factor(p.train[,2]), k = 20, algorithm="cover_tree")
+  indices = attr(k, "nn.index")
+   print(indices[1, ])
+ dists = attr(k, "nn.dist")
+  print(dists[1, ])
+  n=indices[1,1]
+  Norm.dat=t(norm.dat)
+  train=trainn
+  sub=setdiff(rownames(train),colnames(Norm.dat))
+  sub=as.data.frame(sub)
+  sub[colnames(norm.dat)]=NA
+  row.names(sub)=sub$sub
+  sub=sub[,2,drop=F]
+  train=as.matrix(train)
+  class(train)="numeric"
+  sub[1]=train[intersect(row.names(train),row.names(sub)),n,drop=F]
+  dat=rbind(sub,t(Norm.dat))
+  v.data=rbind(v.data,t(dat))
+  
+}
+####################batch correction###########################
+p.data=rbind(p.dat,(p.train))
+test=cbind(t(v.data),train1)
+a=p.data
+a$ref=1
+a$ref[1:22]=2
+a$sample="train"
+a$sample[1:22]="independant test"
+mod=model.matrix(~1,data = a)
+test=as.matrix(test)
+class(test)="numeric"
+
+c.t=ComBat(test,batch = a$ref,mod=mod,ref.batch = "1")
+pqr=prcomp(t(c.t),scale. = T)
+autoplot(pqr, data=a, colour= "sample")+ theme_bw()
+Dat=c.t[,1:22]
+p.train=as.data.frame(t(p.train))
+save(Dat,"ex2.rds")
+##############################################################################################################################################################################################################################
+#IMPUTATION AFTER BATCH CORRECTION 
+library(sva)
+library(ggplot2)
+library(ggfortify)
+library(tidyverse)
+library(preprocessCore)
+library(FNN)
+## this script is imputation after batch correction , and it is not single sample compatable
+setwd(" ")
+data=readRDS("76826.rds") # independent test data
+train1=readRDS("train1.batch-corrected.rds") # batch corrected train
+train=readRDS("train1.rds") #non normalised train
+train=train[,-c(1:4)] # removing pheno data
+p.train=train1[c(11069:11072),]# creating a pheno data dataframe
+p.train=as.data.frame(t(p.train))
+train1=train1[-c(11069:11072),] # removing pheno data
+p.dat=read.csv("p.exv.csv") # reading the pheno data of independent dataset
+data=as.matrix(data)
+class(data)="numeric"
+data=log2(data)
+train=as.matrix(train)
+class(train)="numeric"
+train=log2(train)
+data=data[intersect(rownames(data),rownames(train1)),]
+############NORMALISATION ###########
+trainn=normalize.quantiles(t(train),keep.names = T,copy = T)
+train=trainn[intersect(rownames(data),rownames(trainn)),]
+targets=normalize.quantiles.determine.target(train,target.length = NULL,subset = NULL)
+Data=normalize.quantiles.use.target(data,targets)
+dimnames(Data)=dimnames(data)
+boxplot(Data,outline=F)
+boxplot(trainn,outline=F) 
+#############batch correction#######
+p.data=rbind(p.dat,(p.train))
+train=train1[intersect(rownames(data),rownames(train1)),]
+test=cbind(Data,train)
+a=p.data
+a$ref=1
+a$ref[1:22]=2
+a$cl="train"
+a$cl[1:22]="test"
+mod=model.matrix(~1,data = a)
+test=as.matrix(test)
+class(test)="numeric"
+
+c.t=ComBat(test,batch = a$ref,mod=mod,ref.batch = "1")
+pqr=prcomp(t(c.t),scale. = T)
+autoplot(pqr, data=a, colour= "cl")+ theme_bw()
+Dat=c.t[,1:22]
+######################imputation#####################
+v.data=data.frame()
+
+Dat=t(Dat)
+for (x in 1:dim(Dat)[1]) {
+  #kNN
+  Train=train1[intersect(rownames(train1),colnames(Dat)),]
+  norm.dat=Dat[x,,drop=F]
+  norm.dat=as.data.frame(t(norm.dat))
+  Train=as.matrix(Train)
+  class(Train)="numeric"
+  #Train=2^Train
+  k <- knn((t(Train)),t(norm.dat), factor(p.train[,2]), k = 20, algorithm="cover_tree")
+  indices = attr(k, "nn.index")
+  
+  print(indices[1, ])
+   dists = attr(k, "nn.dist")
+   print(dists[1, ])
+  n=indices[1,1]
+  Norm.dat=t(norm.dat)
+  train=trainn
+  sub=setdiff(rownames(train),colnames(Norm.dat))
+  sub=as.data.frame(sub)
+  sub[colnames(norm.dat)]=NA
+  row.names(sub)=sub$sub
+  sub=sub[,2,drop=F]
+  train=as.matrix(train)
+  class(train)="numeric"
+  sub[1]=train1[intersect(row.names(train1),row.names(sub)),n,drop=F]
+  dat=rbind(sub,t(Norm.dat))
+  v.data=rbind(v.data,t(dat))
+  
+}
+saveRDS(v.data,"ex1.rds)
+#######################################################################################################################################################################################################################
+######## ENSEMBLE ############
+library(caret)
+library(ranger)
+library(e1071)
+library(xgboost)
+library(pamr)
+library(glmnet)
+library(pROC)
+library(dplyr)
+library(doParallel)
+library(tictoc)
+library(beepr)
+setwd(" ")
+#model reading
+model.3=readRDS("logisticR.Mod.10.rds")
+model.4=readRDS("RandomF.Mod.10.rds")
+model.5=readRDS("SVM.Mod.10.rds")
+#threshold setting
+lG=0.523
+RF=.58
+SVM=.558
+#reading independent data set 
+e=readRDS("ex1.rds")# change the number based on the type of proceesed file of independent datset 
+test=(e)
+test=as.matrix(test)
+class(test)="numeric"
+# model prediction
+pret3=predict(model.3,t(test),type="prob")
+pret4=predict(model.4,t(test),type="prob")
+pret5=predict(model.5,newdata=t(test),probability = T)
+####reading pheno data####
+ex.p=read.csv("p.exv.csv")
+#LOGESTIC REGRESSION
+d=roc(factor(ex.p[,2]),pret3[,1])
+plot(d)
+auc(d)
+prediction <- as.numeric(pret3[,1] >lG)
+prediction=as.list(prediction)
+p=rapply(prediction,function(x) ifelse(x==1,"case",x),how ="replace")
+p=rapply(p,function(x) ifelse(x==0,"control",x),how ="replace")
+p=unlist(p)
+prediction=as.factor(p)
+confusionMatrix(prediction,factor(ex.p$group))
+#Random Forest
+d=roc(factor(ex.p[,2]),pret4[,1])
+plot(d)
+auc(d)
+prediction <- as.numeric(pret4[,1] >RF)
+prediction=as.list(prediction)
+p=rapply(prediction,function(x) ifelse(x==1,"case",x),how ="replace")
+p=rapply(p,function(x) ifelse(x==0,"control",x),how ="replace")
+p=unlist(p)
+prediction=as.factor(p)
+confusionMatrix(prediction,factor(ex.p$group))
+#SVM
+p=attr(pret5,"probabilities")
+d=roc(factor(ex.p[,2]),p[,2])
+plot(d,scale=T)
+auc(d)
+prediction <- as.numeric(p[,2] >SVM)
+prediction=as.list(prediction)
+p=rapply(prediction,function(x) ifelse(x==1,"case",x),how ="replace")
+p=rapply(p,function(x) ifelse(x==0,"control",x),how ="replace")
+p=unlist(p)
+prediction=as.factor(p)
+confusionMatrix(prediction,factor(ex.p$group))
+#######################enesmble results#######################
+p3<- as.numeric(pret3[,1] >lG)
+p4<-as.numeric(pret4[,1]>RF)
+p=attr(pret5,"probabilities")
+p5 <- as.numeric(p[,2] >SVM)
+dat=data.frame(p3,p4,p5)
+#SVM-lr
+dat$der=dat$p3+dat$p5
+vot=rapply(list(dat$der),function(x)ifelse(x>=2,"case",x),how="replace")
+vot=rapply(vot,function(x)ifelse(x<=1,"control",x),how="replace")
+vot=unlist(vot)
+prediction=as.factor(vot)
+confusionMatrix(prediction,factor(ex.p[,2]))
+#svm-RF
+dat$der=dat$p4+dat$p5
+vot=rapply(list(dat$der),function(x)ifelse(x>=2,"case",x),how="replace")
+vot=rapply(vot,function(x)ifelse(x<=1,"control",x),how="replace")
+vot=unlist(vot)
+prediction=as.factor(vot)
+confusionMatrix(prediction,factor(ex.p[,2]))
