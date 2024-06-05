@@ -1,0 +1,321 @@
+# Affymetrix
+library(biomaRt)
+library(limma)
+library(tibble)
+library(dplyr)
+library(plyr)
+library(HGNChelper)
+library(oligo)
+library(stringr)
+
+#/ SET WORKING DIRECTORY
+
+setwd(" ")
+
+#/ LIST .CEL FILES
+
+list=list.files(full.names = T,pattern = ".CEL")
+
+#/ READING RAW DATA
+
+RAW.GSE98793<-read.celfiles(list.files(pattern = '*CEL', full.names = TRUE))
+
+#/ FETCHING PHENOTYPE DATA
+
+ph.data<-read.csv("pheno93.csv",header = T)
+
+#/ PERFORM RMA
+GSE98793.rma= rma(RAW.GSE98793, background=TRUE, normalize= FALSE)
+View(GSE98793.rma@assayData$exprs)
+
+#/ RAW EXPRESSION MATRIX AS DATA FRAME
+RAW.GSE98793.DF = as.data.frame(exprs(GSE98793.rma))
+
+View(RAW.GSE18312.DF)
+
+# Editing column names of the raw expression matrix df
+
+colnames(RAW.GSE98793.DF)=ph.data$sample_id
+colnames(RAW.GSE98793.DF)
+
+#/ GENE ANNOTATION
+
+
+
+Martfunction=useMart("ENSEMBL_MART_ENSEMBL")
+Martfunction=useDataset("hsapiens_gene_ensembl",Martfunction)
+GSE98793.pIDs=rownames(RAW.GSE98793.DF)
+GS.pIDs.98793= getBM(attributes = c("affy_hg_u133_plus_2", "hgnc_symbol"),
+                     filters = "affy_hg_u133_plus_2",
+                     values = GSE98793.pIDs,
+                     mart = Martfunction)
+
+dim(GS.pIDs.98793)#49456     2
+
+#/ REMOVE UNASSIGNED PROBE-IDS
+
+GS.pIDs.98793.df=GS.pIDs.98793[!(GS.pIDs.98793$hgnc_symbol==""),]
+
+#/ VERIFY GENE SYMBOLS WITH HGNC
+
+geneSymbols.verified<-checkGeneSymbols(GS.pIDs.98793.df$hgnc_symbol, species = "human")
+
+# Exchange the columns with corrected values (from verified to unverified gene symbol df)
+
+GS.pIDs.98793.df$hgnc_symbol<-geneSymbols.verified$Suggested.Symbol
+
+# Creating blank spaces in place of NA and then removing the blank spaces 
+
+GS.pIDs.98793.df[is.na(GS.pIDs.98793.df)] <- ""
+GS.pIDs.98793.df=GS.pIDs.98793.df[!(GS.pIDs.98793.df$hgnc_symbol==""),]
+
+#/ BRING ROW-NAMES TO COLUMN IN RAW EXPRESSSION DATA
+
+RAW.GSE98793.DF=rownames_to_column(RAW.GSE98793.DF, "PIDs")
+colnames(GS.pIDs.98793.df)[1]= "PIDs"
+
+#/ ADD GENE SYMBOLS TO NORMALIZED DATA
+
+GSE98793.geneSymbols= merge(GS.pIDs.98793.df,RAW.GSE98793.DF, by= "PIDs")
+
+dim(GSE98793.geneSymbols)# 43679   194
+
+#/ AVERAGE OUT DUPLICATE GENE SYMBOLS ROW-WISE USING LIMMA AVEREPS
+
+GSE98793.avreps=as.data.frame((limma::avereps(GSE98793.geneSymbols, GSE98793.geneSymbols$hgnc_symbol)))
+
+dim(GSE98793.avreps)#21715   194
+
+#/ HAVE UNIQUE GENE SYMBOLS AS ROW IDS
+
+GSE98793.avreps.df=column_to_rownames(GSE98793.avreps, "hgnc_symbol")
+GSE98793.avreps.final=GSE98793.avreps.df[-c(1)] # remove unwanted column
+dim(GSE98793.avreps.final)# 21715   192
+view(GSE98793.avreps.final)
+
+abc = mutate_all(GSE98793.avreps.final, function(x) as.numeric(as.character(x)))
+
+GSE98793.avreps.AL= 2^abc # RMA performs log transformation , this is to remove it 
+View(GSE98793.avreps.AL)
+
+saveRDS(GSE98793.avreps.AL,  "98793.rds")
+
+
+
+###############################################illumina##########################################################################
+library(lumi)
+library(plyr)
+library(HGNChelper)
+library(stringr)
+library(tibble)
+#/ SETTING WORKING DIRECTORY
+
+setwd(" ")
+
+#/ LISTING FILES IN THE DIRECTORY
+
+txt.gse46743<-list.files("/", pattern="txt")
+
+#/ READING RAW DATA
+RAW.DATA.GSE46743 <- lumiR("GSE46743_non-normalized.txt.gz", convertNuID = TRUE, 
+                           lib.mapping = 'lumiHumanIDMapping', QC = TRUE,  dec = '.', parseColumnName = TRUE,checkDupId = T,
+                           columnNameGrepPattern = list(exprs='sample', se.exprs='NA', detection='Detection'))
+dim(RAW.DATA.GSE46743) #48726      320 
+
+#/ FILTERING EXPRESSED PROBES by taking the average of 3 probes<0.05
+
+EXPRESSED.PROBES<- rowSums(RAW.DATA.GSE46743@assayData$detection<0.05)>=3
+
+# Subtract from main object or retain only expressed probes in expression matrix
+
+GSE46743.RAW=RAW.DATA.GSE46743[EXPRESSED.PROBES,]
+dim(GSE46743.RAW) #35515      320 
+
+## FETCHING PHENOTYPE DATA
+
+phData<- read.csv("pheno43.csv",header = T)
+
+colnames(GSE46743.RAW)= phData$sample_id
+colnames(GSE46743.RAW)
+
+#/ PERFORMING BACKGROUND CORRECTION
+
+BCOR.GSE46743<- lumiB(GSE46743.RAW)
+class(GSE46743.RAW)
+dim(BCOR.GSE46743)#35515      320 
+
+# Extract background corrected matrix
+
+BCOR.GSE46743.matrix= exprs(BCOR.GSE46743)
+dim(BCOR.GSE46743.matrix)
+
+# Check for negative values and replace them with zero
+
+abc=apply(BCOR.GSE46743.matrix, 1, function(row) any(row<0))
+length(which(abc)) # 0 rows with negative values
+
+BCOR.GSE46743.matrix[BCOR.GSE46743.matrix<0]=0
+
+BCOR.GSE46743.df= as.data.frame(BCOR.GSE46743.matrix)
+
+dim(BCOR.GSE46743.df) #35515 
+
+## GENE ANNOTATION
+
+BCOR.GSE46743.df= rownames_to_column(BCOR.GSE46743.df)
+
+GENE.SYMBOLS<- nuID2targetID(BCOR.GSE46743.df$rowname, lib.mapping = "lumiHumanIDMapping")
+
+GENE.SYMBOLS= as.data.frame(GENE.SYMBOLS)
+
+GENE.SYMBOLS.sub = GENE.SYMBOLS$GENE.SYMBOLS
+
+## CHECKING HGNC SYMBOLS
+
+GENE.SYMBOLS[,2:4]<-checkGeneSymbols(GENE.SYMBOLS.sub, species = "human", unmapped.as.na = TRUE)
+
+View(GENE.SYMBOLS)
+
+GENE.SYMBOL.ASSIGNED=na.omit(GENE.SYMBOLS)
+
+table(is.na(GENE.SYMBOL.ASSIGNED$GENE.SYMBOLS))
+
+dim(GENE.SYMBOL.ASSIGNED) #23277
+
+# Remove rows with unassigned gene symbols
+
+GENE.SYMBOL.ASSIGNED= rownames_to_column(GENE.SYMBOL.ASSIGNED, "rownames")
+
+BCOR.GSE.df= rownames_to_column(BCOR.GSE46743.df, "rownames")
+
+GENES.MERGED= merge(GENE.SYMBOL.ASSIGNED, BCOR.GSE46743.df, by="row.names")
+
+dim(GENES.MERGED)#23277 
+
+#/ LIMMA AVEREPS
+
+GSE46743.avreps=as.data.frame((limma::avereps(GENES.MERGED, GENES.MERGED$Suggested.Symbol)))
+
+GSE46743.avreps= GSE46743.avreps[,-c(1:4)]
+View(GSE46743.avreps)
+dim(GSE46743.avreps)#16289 
+
+GSE46743.avreps.final= column_to_rownames(GSE46743.avreps, "Suggested.Symbol")
+dim(GSE46743.avreps.final)# 16289
+
+GSE46743.avreps.final=GSE46743.avreps.final[,-c(1,2)]
+is.numeric(GSE46743.avreps.final)
+GSE46743.avreps.final=as.matrix(GSE46743.avreps.final)
+class(GSE46743.avreps.final)="numeric"
+
+GSE46743.avreps.final=GSE46743.avreps.final[,phData$treatment!="yes"]
+dim(GSE46743.avreps.final)
+phData=phData[phData$treatment!="yes",c(1:4)]
+saveRDS(phData,"pheno43.rds")
+saveRDS(GSE46743.avreps.final, "46743.rds")
+########################################################################################Agilent###################################################################
+library(BiocManager)
+library(limma)
+library(biomaRt)
+library(org.Hs.eg.db)
+library(ggplot2)
+library(HGNChelper)
+library(dplyr)
+library(plyr)
+library(tibble)
+library(GEOquery)
+setwd("D:/vipul R/76826")
+# list the files to read them at once
+list_GSE76826=list.files(pattern = "*.txt", full.names = F, ignore.case = T)
+
+# convert the data to an EListRaw object,
+GSE76826=read.maimages(files = list_GSE76826, source = "agilent", green.only = T,  other.columns = 'gIsWellAboveBG')
+
+colnames(GSE76826)=gsub("_.*","",colnames(GSE76826))
+
+# Box plot for raw intensities
+box_rawGSE76826=as.data.frame(GSE76826$E)
+#box_rawGSE76826= log2(box_rawGSE76826)
+box_raw_stackGSE76826=stack(box_rawGSE76826)
+ggplot(box_raw_stackGSE76826) + geom_boxplot(aes(x = ind, y = values))+
+  theme_bw()+
+  xlab("Samples")+
+  ylab("log2 transformed raw intensities")+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + ggtitle("raw_76826")
+
+# gene Annotation
+mart <- useMart('ENSEMBL_MART_ENSEMBL','hsapiens_gene_ensembl')
+#mart <- useDataset('hsapiens_gene_ensembl', mart)
+GSE76826_probeIDs=GSE76826$genes$ProbeName
+annotLookup_GSE76826 <- getBM(
+  mart = mart,
+  attributes = c(
+    'agilent_sureprint_g3_ge_8x60k_v2',"hgnc_symbol"),
+  filter = 'agilent_sureprint_g3_ge_8x60k_v2',
+  values = GSE76826_probeIDs)
+
+colnames(annotLookup_GSE76826)[1] <- 'AgilentID' # Set column name
+
+# MAtch the annotated genes with that of Agilent IDs. 
+annotLookup_GSE76826 <- annotLookup_GSE76826[which(annotLookup_GSE76826$AgilentID %in% GSE76826$genes$ProbeName),]
+annotLookup_GSE76826 <- annotLookup_GSE76826[match(GSE76826$genes$ProbeName, annotLookup_GSE76826$AgilentID),]
+
+# Number of probes annotated
+table(GSE76826$genes$ProbeName == annotLookup_GSE76826$AgilentID) #33056  probes with annotation
+
+# Check probe names with HGNC 
+gSymbols=annotLookup_GSE76826$hgnc_symbol
+check.Symbols=checkGeneSymbols(gSymbols, unmapped.as.na = TRUE, map = NULL,
+                               species = "human")
+
+check.Symbols$x[check.Symbols$x==""]=NA
+table(check.Symbols$x==check.Symbols$Suggested.Symbol) 
+
+# Use HGNC symbols from HGNC helper (Suggested names)
+# Add probe names and gene symbols to the ElistRaw object 
+GSE76826$genes$AgilentID <- annotLookup_GSE76826$AgilentID
+GSE76826$genes$HGNCsymbol <- check.Symbols$Suggested.Symbol
+
+# perform background correction on the fluorescent intensities
+# https://www.rdocumentation.org/packages/limma/versions/3.28.14/topics/backgroundCorrect
+Norm_GSE76826 <- backgroundCorrect(GSE76826, method = 'normexp', offset=0)
+
+# Box plot for Batch corrected intensities
+box_bgcorrectGSE76826=as.data.frame(Norm_GSE76826$E)
+#box_bgcorrectGSE60678= log2(box_bgcorrectGSE60678)
+box_bgcorrect_stackGSE76826=stack(box_bgcorrectGSE76826)
+
+ggplot(box_bgcorrect_stackGSE76826) + geom_boxplot(aes(x = ind, y = values))+
+  theme_bw()+
+  xlab("Samples")+
+  ylab("log2 transformed raw intensities")+ ylim(0, 2000)+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+
+
+Control= Norm_GSE76826$genes$ControlType==1L
+#  QnormGSE60678$genes$ControlType==1L 
+# The unassigned probes from biomart may exist as blank cells and NA
+# Identify blank cells and replace it with NA
+table(Norm_GSE76826$genes$HGNCsymbol[Norm_GSE76826$genes$HGNCsymbol==""])
+Norm_GSE76826$genes$HGNCsymbol[Norm_GSE76826$genes$HGNCsymbol==""]=NA
+#QnormGSE60678$other$gIsWellAboveBG
+NoSymbol <- is.na(Norm_GSE76826$genes$HGNCsymbol) #13874
+IsExpr <- rowSums(Norm_GSE76826$other$gIsWellAboveBG > 0) >= 11 #40128 (25% or 50% of the total sample number criteria can be used for filtering, Suggested by Kevin to Parin, Biostars)
+QnormGSE76826.filt <- Norm_GSE76826[!Control & !NoSymbol & IsExpr, ]
+dim(Norm_GSE76826)# 43931    67
+dim(QnormGSE76826.filt) # 20093    67
+
+# Keep columns which are needed
+QnormGSE76826.filt$genes <- QnormGSE76826.filt$genes[,c("HGNCsymbol", "AgilentID")]
+head(QnormGSE76826.filt$genes)
+
+# limma avereps for averaging out the intensities for duplicate genes
+# The averep function also assigns the gene symbols (input for ID) as rownames to the expression matrix
+QnormGSE76826.filt.mean <- avereps(as.data.frame(QnormGSE76826.filt$E),
+                                   ID = QnormGSE76826.filt$genes$HGNCsymbol)
+dim(QnormGSE76826.filt.mean) #  13891    67
+
+GSE76826.df= as.data.frame(QnormGSE76826.filt.mean)
+#saving file
+#aveRDS(GSE76826.df,"76826.rds")
