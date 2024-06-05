@@ -10,21 +10,27 @@ library(doParallel)
 library(tictoc)
 library(beepr)
 setwd(" ")
+
 #reading train files
+
 train=readRDS("train1.batch-corrected.rds")
 p.train=t(train[c(11069:11072),]) 
 p.train=as.data.frame(p.train)
 train=train[-c(11069:11072),] # removing pheno data from the dataframe to convert it into a numeric data frame
 train=t(as.data.frame(train))
 label=factor(p.train$group)
-#reading internal test
+#reading  test Data
+
 test=readRDS("test1.batch-corrected.rds")
 p.test=t(test[c(11069:11072),])
 p.test=as.data.frame(p.test)
 labelt=factor(p.test$group)
 test=test[-c(11069:11072),]
+
 ###############################################PAM#################################################################
+
 #data changes for pam
+
 train=as.matrix(t(train))
 class(train)="numeric"
 test=as.matrix(t(test))
@@ -35,44 +41,65 @@ train.data= list(x=x,y=label)
 #model training pam
 model.1=pamr.train(train.data)
 Delta=0
+
 ##############################################xgboost#################################################################
+                                             #XGBoost#
 #data changes for xgboost
+
 train=t(train)
 str(train)
 ts_label <- as.numeric(label)-1
 label <- as.numeric(labelt)-1
 dtrain=xgb.DMatrix(data=train,label=ts_label)
 class(dtrain)
+
 #model training xgboost
+
 model.2 <- xgboost(data = dtrain, max.depth = 2, eta = 1, nthread = 2, nrounds = 10, objective = "binary:logistic", verbose = 2)
+
 ############################################logistic regression#############################################################
+
 #data changes for logistic regression
+
 train_c= trainControl(method = "cv",number = 10,savePredictions = "all",classProbs = T)
+
 #model training for logistic regresion
+
 model.3=train(train,p.train[,2],method="glmnet",trControl= train_c,family="binomial")
+
 ############################################Random Forest#################################################################
+
 #data and system changes for random forest 
+
 # Random forest here is configured for parallel processing which will leave you device almost un workable for the duration of the train of this model if the script is run as it is  
+
 cluster=makeCluster(detectCores()-1)                # can reduce the burden on your computer by decreceasing the avaliable cores (increase the value of 1) but this will come at the cost of speed
 registerDoParallel(cluster)
 tic()
 train_cv=trainControl(method = "cv",number = 10,savePredictions = "all",
                       classProbs = T,search = "grid",allowParallel = T)
+
 #model training for random forest 
+
 set.seed(101) 
 grid_rf=expand.grid(mtry=c(1:10))
 model.4= train(t(train),factor(p.train[,2]),method = "ranger",trControl = train_cv )
 stopCluster(cluster)
 toc()
+
 ###################################################SVM#############################################################
+
 #model training svm
+
 # as the number of values in gamma and cost increase the time taken for model building will increase
+
 tic()
 model.5= best.svm(t(train), factor(p.train[,2]),cost=c(1,10,100),gamma=c(0.1,0.01,0.001,0.0001),tunecontrol=tune.control(cross = 10),kernel = "radial", probability= T)
 toc()
 beep(9)
+
 ######################################################################################################################
-#                                                  prediction (train)                      
+#                                                  prediction using train                      
 #############################################################################################################################
 #train=t(train)
 Delta=0
@@ -81,8 +108,10 @@ pre2=predict(model.2,(train))
 pre3=predict(model.3,(train),type="prob")
 pre4=predict(model.4,(train),type="prob")
 pre5=predict(model.5,newdata=(train),probability = T)
-########################################################AUC-ROC############################################################
+######################################################## AUC-ROC AND CONFUSION MATRIX ############################################################
+
 #PAM
+
 d=roc(factor(p.train[,2]),pre1[,1])
 plot(d,scale=T)
 auc(d)
@@ -93,6 +122,7 @@ p=rapply(p,function(x) ifelse(x==0,"control",x),how ="replace")
 p=unlist(p)
 prediction=as.factor(p)
 confusionMatrix(prediction,factor(p.train$group))
+
 ######################xgboost##############
 
 d=roc(factor(ts_label),pre2)
@@ -109,6 +139,7 @@ prediction=as.factor(p)
 confusionMatrix(prediction,factor(p.train$group))
 
 #logestic regression
+
 d=roc(factor(p.train[,2]),pre3[,1])
 plot(d)
 auc(d)
@@ -123,6 +154,7 @@ confusionMatrix(prediction,factor(p.train$group))
 
 
 #Random forest
+
 d=roc(factor(p.train[,2]),pre4[,1])
 plot(d)
 auc(d)
@@ -134,7 +166,9 @@ p=rapply(p,function(x) ifelse(x==0,"control",x),how ="replace")
 p=unlist(p)
 prediction=as.factor(p)
 confusionMatrix(prediction,factor(p.train$group))
+
 ###svm ###
+
 pre5=attr(pre5,"probabilities")
 d=roc(factor(p.train[,2]),pre5[,2])
 plot(d)
@@ -147,8 +181,8 @@ p=rapply(p,function(x) ifelse(x==0,"control",x),how ="replace")
 p=unlist(p)
 prediction=as.factor(p)
 confusionMatrix(prediction,factor(p.train$group))
-##############################################################################################################################
-#                                            prediction test
+###################################################################################################################
+#                                            prediction USING TEST
 ###################################################################################################################
 test=t(test) # test dataframe should reach this step with the samples in rowns and genes in th column
 Delta=0
@@ -157,11 +191,13 @@ pret2=predict(model.2,t(test))
 pret3=predict(model.3,t(test),type="prob")
 pret4=predict(model.4,t(test),type="prob")
 pret5=predict(model.5,newdata=t(test),probability = T)
+
 #########################################################################################################################
 #                                            AUC-ROC(test)
 ################################################################################################################################
 
 #PAM
+
 d=roc(factor(p.test[,2]),pret1[,1])
 plot(d,scale=T)
 auc(d)
@@ -186,7 +222,9 @@ p=rapply(p,function(x) ifelse(x==0,"control",x),how ="replace")
 p=unlist(p)
 prediction=as.factor(p)
 confusionMatrix(prediction,factor(p.test[,2]))
-#logestic regression
+
+#LOGESTIC REGRESSION
+
 d=roc(factor(p.test[,2]),pret3[,1])
 plot(d)
 auc(d)
@@ -197,19 +235,22 @@ p=rapply(p,function(x) ifelse(x==0,"control",x),how ="replace")
 p=unlist(p)
 prediction=as.factor(p)
 confusionMatrix(prediction,labelt)
-#Random forest
+
+#RANDOM FOREST
+
 d=roc(factor(p.test[,2]),pret4[,1])
 plot(d)
 auc(d)
 prediction <- as.numeric(pret4[,1] >0.563)              # threshold set using test to determine highest model performance
-
 prediction=as.list(prediction)
 p=rapply(prediction,function(x) ifelse(x==1,"case",x),how ="replace")
 p=rapply(p,function(x) ifelse(x==0,"control",x),how ="replace")
 p=unlist(p)
 prediction=as.factor(p)
 confusionMatrix(prediction,labelt)
-#SVM 
+
+#SVM (SUPPORT VECTOR MACHINE)
+
 p=attr(pret5,"probabilities")
 d=roc(factor(p.test[,2]),p[,2])
 plot(d)
@@ -221,15 +262,18 @@ p=rapply(p,function(x) ifelse(x==0,"control",x),how ="replace")
 p=unlist(p)
 prediction=as.factor(p)
 confusionMatrix(prediction,labelt)
+
 # threshold optimisation 
+
 Threshold=data.frame(cut=d$thresholds,sensitiity=d$sensitivities,specificity=d$specificities)
 Threshold$gmean=sqrt(Threshold$sensitiity*Threshold$specificity) # the threshold cooresponding to highest geometric mean (gmean) of specificity and sensitivity is the optimal threshold
 
 #saving models
+
 saveRDS(model.1,"pam.Mod.1.rds")
 saveRDS(model.2,"xgboost.Mod.1.rds")
 saveRDS(model.3,"logisticR.Mod.1.rds")
 saveRDS(model.4,"RandomF.Mod.1.rds")
 saveRDS(model.5,"SVM.Mod.1.rds")
 
-beep()
+beep(7)
