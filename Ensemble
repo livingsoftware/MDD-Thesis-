@@ -1,0 +1,53 @@
+# the models selected are loaded 
+library(caret)
+library(ranger)
+library(e1071)
+library(xgboost)
+library(pamr)
+library(glmnet)
+library(pROC)
+library(dplyr)
+library(doParallel)
+library(tictoc)
+library(beepr)
+setwd(" ")
+#reading internal test
+test=readRDS("test1.batch-corrected.rds")
+# optimal thresholds  # in put the the optimal threshold as per the iteration of the model and test data which can be obtained from the model training script
+lG=0.523
+RF=.58
+SVM=.558
+# reading model
+model.3=readRDS("logisticR.Mod.1.rds")
+model.4=readRDS("RandomF.Mod.1.rds")
+model.5=readRDS("SVM.Mod.1.rds")
+#data conversion 
+p.test=t(test[c(11069:11072),])
+p.test=as.data.frame(p.test)
+test=test[-c(11069:11072),] # removing pheno data
+test=as.matrix(t(test))
+class(test)="numeric"
+# prediction using  models
+pret3=predict(model.3,(test),type="prob")
+pret4=predict(model.4,(test),type="prob")
+pret5=predict(model.5,newdata=(test),probability = T)
+#ensemble Model 
+p3<- as.numeric(pret3[,1] >lG)
+p4<-as.numeric(pret4[,1]>RF)
+p=attr(pret5,"probabilities")
+p5 <- as.numeric(p[,2] >SVM)
+dat=data.frame(p3,p4,p5)
+#ENSEMBLE of SVM AND LR
+dat$der=dat$p3+dat$p5
+vot=rapply(list(dat$der),function(x)ifelse(x>=2,"case",x),how="replace")
+vot=rapply(vot,function(x)ifelse(x<=1,"control",x),how="replace")
+vot=unlist(vot)
+prediction=as.factor(vot)
+confusionMatrix(prediction,factor(p.test[,2]))
+#svm-RF
+dat$der=dat$p4+dat$p5
+vot=rapply(list(dat$der),function(x)ifelse(x>=2,"case",x),how="replace")
+vot=rapply(vot,function(x)ifelse(x<=1,"control",x),how="replace")
+vot=unlist(vot)
+prediction=as.factor(vot)
+confusionMatrix(prediction,factor(p.test[,2]))
