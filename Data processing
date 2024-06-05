@@ -1,0 +1,81 @@
+library(tidyr)
+library(plyr)
+library(dplyr)
+library(tibble)
+library(preprocessCore)
+
+setwd(" ")
+
+# Read files: GSE98793
+
+GSE98793=readRDS("98793.rds")
+dim(GSE98793) # 21715   192
+GSE98793$rn <- rownames(GSE98793)
+
+# Read files: GSE46743
+
+GSE46743=readRDS("46743.rds")
+GSE46743=as.data.frame(GSE46743)
+dim(GSE46743)# 16289   160
+GSE46743$rn <- rownames(GSE46743)
+
+# Read files: GSE19738
+
+GSE19738=readRDS("19738.rds")
+dim(GSE19738)# 13891    67
+GSE19738$rn <- rownames(GSE19738)
+
+
+
+# Meta-file 
+
+Meta.file_raw <- join_all(list(GSE98793, GSE46743, GSE19738), 
+                          by = 'rn', type = 'inner')
+
+# Remove "rn" (rowname) column
+
+Meta.file_raw=column_to_rownames(Meta.file_raw, "rn")
+
+# check dimensions
+dim(Meta.file_raw)# 11068   419
+
+# Have numbers in the df in the same format (optional)
+Meta.file_raw= format(Meta.file_raw, scientific = FALSE)
+
+# Pheno-data of the samples (containing “GSE_ID”, “Source” and “Batch”) was merged with the Meta.file_raw
+A=read.csv("pheno38.csv")
+B=read.csv("pheno93.csv")
+C=readRDS("pheno43.rds")
+PhenoData = rbind(A,B,C)
+row.names(PhenoData)=PhenoData$sample_id
+PhenoData=as.data.frame(t(PhenoData))
+PhenoData=PhenoData[,intersect(colnames(Meta.file_raw),colnames(PhenoData))]
+Metaphenofile = rbind( PhenoData,Meta.file_raw)
+
+# Shuffling the samples (columns) in the created meta-file
+
+set.seed(99) #to ensure data reproducibility
+
+Metafile.shuffled = Metaphenofile[sample(1:ncol(Metaphenofile))]
+
+#/ Divide data into 10 equal parts to perform cross-validation
+
+Metafile.t= t(Metafile.shuffled) #transposed metafile
+
+k=10
+
+# 1st Sampling 
+
+set.seed(99)
+
+folds = sample(1:nrow(Metafile.t)%%k) #randomize
+fold = 0  # selecting the fold to be tested
+
+train1 = Metafile.t[folds != fold,]
+test1 = Metafile.t[folds == fold,]
+
+# Exporting the train and the test files
+
+saveRDS(train1, "train1.rds")
+saveRDS(test1, "test1.rds")
+#Note - this script is run 10 times while changing the value of fold in the range of [0:9], to obtain 10 iterations of train and test
