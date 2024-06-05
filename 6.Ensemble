@@ -40,20 +40,25 @@ pret3=predict(model.3,(test),type="prob")
 pret4=predict(model.4,(test),type="prob")
 pret5=predict(model.5,newdata=(test),probability = T)
 
-#ensemble Model 
+                                                                                   #ensemble Model 
+ 
 p3<- as.numeric(pret3[,1] >lG)
 p4<-as.numeric(pret4[,1]>RF)
 p=attr(pret5,"probabilities")
 p5 <- as.numeric(p[,2] >SVM)
-dat=data.frame(p3,p4,p5)
-#ENSEMBLE of SVM AND LR
+dat=data.frame(p3,p4,p5) #creating a dataframe with the probability values of all three models to ensemble 
+
+#ENSEMBLE of SVM AND LOGESTIC REGRESSION
+
 dat$der=dat$p3+dat$p5
 vot=rapply(list(dat$der),function(x)ifelse(x>=2,"case",x),how="replace")
 vot=rapply(vot,function(x)ifelse(x<=1,"control",x),how="replace")
 vot=unlist(vot)
 prediction=as.factor(vot)
 confusionMatrix(prediction,factor(p.test[,2]))
-#svm-RF
+
+#ENSEMBLE of SVM AND RANDOM FOREST
+
 dat$der=dat$p4+dat$p5
 vot=rapply(list(dat$der),function(x)ifelse(x>=2,"case",x),how="replace")
 vot=rapply(vot,function(x)ifelse(x<=1,"control",x),how="replace")
