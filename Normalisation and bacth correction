@@ -1,0 +1,359 @@
+########################################normalization########################################################
+#/ Reading data
+Train1 = as.data.frame(readRDS("train1.rds"))
+Test1 = as.data.frame(readRDS("test1.rds"))
+
+#/ Samples from each batch need to be quantile normalized separately
+
+#/ Sub-setting first set of data based on GSE IDs
+
+# Sub-setting train data
+
+GSE98793.Train1.raw=Train1[Train1$gse_id =="GSE98793",]
+GSE98793.Train11.raw=Train1[Train1$batch =="1",]
+GSE98793.Train12.raw=Train1[Train1$batch=="2",]
+GSE46743.Train1.raw=Train1[Train1$gse_id=="GSE46743",]
+GSE19738.Train1.raw=Train1[Train1$gse_id=="GSE19738",]
+
+labels.Train11.GSE98793= GSE98793.Train11.raw[,c(1:4)]
+labels.Train12.GSE98793= GSE98793.Train12.raw[,c(1:4)]
+labels.Train1.GSE46743= GSE46743.Train1.raw[,c(1:4)]
+labels.Train1.GSE19738= GSE19738.Train1.raw[,c(1:4)]
+
+# Sub-setting Test data
+
+GSE98793.Test1.raw=Test1[Test1$gse_id=="GSE98793",]
+GSE98793.Test11.raw=Test1[Test1$batch=="1",]
+GSE98793.Test12.raw=Test1[Test1$batch=="2",]
+GSE46743.Test1.raw=Test1[Test1$gse_id=="GSE46743",]
+GSE19738.Test1.raw=Test1[Test1$gse_id=="GSE19738",]
+ 
+labels.Test11.GSE98793= GSE98793.Test11.raw[,c(1:4)]
+labels.Test12.GSE98793= GSE98793.Test12.raw[,c(1:4)]
+labels.Test1.GSE46743= GSE46743.Test1.raw[,c(1:4)]
+labels.Test1.GSE19738= GSE19738.Test1.raw[,c(1:4)]
+
+# 1.1 GSE98793
+
+# a. Train data
+Train11.GSE98793.df=t(GSE98793.Train11.raw)
+Train11.GSE98793.df= Train11.GSE98793.df[-c(1:4),]
+class(Train11.GSE98793.df)="numeric"
+Train11.GSE98793.df=log2(Train11.GSE98793.df)
+
+# Check for rows with negative values
+abc=apply(Train11.GSE98793.df, 1, function(row) any(row<0))
+length(which(abc)) # 0 rows with negative values
+
+Train11.GSE98793.df[Train11.GSE98793.df<0]=0
+
+# Normalize
+Train11.GSE98793.qnorm=normalize.quantiles(Train11.GSE98793.df, copy = T,keep.names = T)
+boxplot(Train11.GSE98793.qnorm)
+
+# Save targets
+Train11.GSE98793.targets= normalize.quantiles.determine.target(Train11.GSE98793.qnorm,target.length=NULL,subset=NULL)
+
+
+# Add back the pheno-data
+
+Train11.GSE98793.qnorm.ph= rbind(Train11.GSE98793.qnorm, t(labels.Train11.GSE98793))
+
+
+# b. Test data
+
+Test11.GSE98793.df=t(GSE98793.Test11.raw)
+Test11.GSE98793.df= Test11.GSE98793.df[-c(1:4),]
+class(Test11.GSE98793.df)="numeric"
+Test11.GSE98793.df=log2(Test11.GSE98793.df)
+
+# Check for rows with negative values
+abc=apply(Test11.GSE98793.df, 1, function(row) any(row<0))
+length(which(abc)) # 0 rows with negative values
+
+Test11.GSE98793.df[Test11.GSE98793.df<0]=0
+
+# Normalize
+Test11.GSE98793.qnorm <- normalize.quantiles.use.target(Test11.GSE98793.df,Train11.GSE98793.targets,copy=TRUE,subset=NULL)
+
+boxplot(Test11.GSE98793.qnorm)
+
+# Add column and row names from original data
+dimnames(Test11.GSE98793.qnorm)=dimnames(Test11.GSE98793.df)
+
+# Add back the pheno-data
+
+Test11.GSE98793.qnorm.ph= rbind(Test11.GSE98793.qnorm, t(labels.Test11.GSE98793))
+
+#1.2 GSE98793
+
+# a. Train data
+Train12.GSE98793.df=t(GSE98793.Train12.raw)
+Train12.GSE98793.df= Train12.GSE98793.df[-c(1:4),]
+class(Train12.GSE98793.df)="numeric"
+Train12.GSE98793.df=log2(Train12.GSE98793.df)
+
+# Check for rows with negative values
+abc=apply(Train12.GSE98793.df, 1, function(row) any(row<0))
+length(which(abc)) # 0 rows with negative values
+
+Train12.GSE98793.df[Train12.GSE98793.df<0]=0
+
+# Normalize
+Train12.GSE98793.qnorm=normalize.quantiles(Train12.GSE98793.df, copy = T,keep.names = T)
+boxplot(Train12.GSE98793.qnorm)
+
+# Save targets
+Train12.GSE98793.targets= normalize.quantiles.determine.target(Train12.GSE98793.qnorm,target.length=NULL,subset=NULL)
+
+
+# Add back the pheno-data
+
+Train12.GSE98793.qnorm.ph= rbind(Train12.GSE98793.qnorm, t(labels.Train12.GSE98793))
+
+
+# b. Test data
+
+Test12.GSE98793.df=t(GSE98793.Test12.raw)
+Test12.GSE98793.df= Test12.GSE98793.df[-c(1:4),]
+class(Test12.GSE98793.df)="numeric"
+Test12.GSE98793.df=log2(Test12.GSE98793.df)
+
+# Check for rows with negative values
+abc=apply(Test12.GSE98793.df, 1, function(row) any(row<0))
+length(which(abc)) # 0 rows with negative values
+
+Test12.GSE98793.df[Test12.GSE98793.df<0]=0
+
+# Normalize
+Test12.GSE98793.qnorm <- normalize.quantiles.use.target(Test12.GSE98793.df,Train12.GSE98793.targets,copy=TRUE,subset=NULL)
+
+boxplot(Test12.GSE98793.qnorm)
+
+# Add column and row names from original data
+dimnames(Test12.GSE98793.qnorm)=dimnames(Test12.GSE98793.df)
+
+# Add back the pheno-data
+
+Test12.GSE98793.qnorm.ph= rbind(Test12.GSE98793.qnorm, t(labels.Test12.GSE98793))
+
+# 2.GSE46743
+# a. Train data
+
+Train1.GSE46743.df=t(GSE46743.Train1.raw)
+Train1.GSE46743.df= Train1.GSE46743.df[-c(1:4),]
+class(Train1.GSE46743.df)="numeric"
+Train1.GSE46743.df=log2(Train1.GSE46743.df)
+
+# Check for rows with negative values
+abc=apply(Train1.GSE46743.df, 1, function(row) any(row<0))
+length(which(abc)) # 0 rows with negative values
+
+Train1.GSE46743.df[Train1.GSE46743.df<0]=0
+
+# Normalize
+Train1.GSE46743.qnorm=normalize.quantiles(Train1.GSE46743.df, copy = T)
+boxplot(Train1.GSE46743.qnorm)
+
+# Save targets
+Train1.GSE46743.targets= normalize.quantiles.determine.target(Train1.GSE46743.qnorm,target.length=NULL,subset=NULL)
+
+# Add column and row names from original data
+dimnames(Train1.GSE46743.qnorm)=dimnames(Train1.GSE46743.df)
+
+# Add back the pheno-data
+
+Train1.GSE46743.qnorm.ph= rbind(Train1.GSE46743.qnorm, t(labels.Train1.GSE46743))
+#View(Train1.GSE38481.qnorm.ph)
+
+# b. Test data
+Test1.GSE46743.df=t(GSE46743.Test1.raw)
+Test1.GSE46743.df= Test1.GSE46743.df[-c(1:4),]
+class(Test1.GSE46743.df)="numeric"
+Test1.GSE46743.df=log2(Test1.GSE46743.df)
+
+# Check for rows with negative values
+abc=apply(Test1.GSE46743.df, 1, function(row) any(row<0))
+length(which(abc)) # 101 rows with negative values
+
+Test1.GSE46743.df[Test1.GSE46743.df<0]=0
+
+# Normalize
+
+Test1.GSE46743.qnorm <- normalize.quantiles.use.target(Test1.GSE46743.df,Train1.GSE46743.targets,copy=TRUE,subset=NULL)
+
+boxplot(Test1.GSE46743.qnorm)
+
+# Add column and row names from the original data
+dimnames(Test1.GSE46743.qnorm)=dimnames(Test1.GSE46743.df)
+
+# Add back the pheno-data
+
+Test1.GSE46743.qnorm.ph= rbind(Test1.GSE46743.qnorm, t(labels.Test1.GSE46743))
+
+
+# 3.GSE19738
+# a. Train data
+
+Train1.GSE19738.df=t(GSE19738.Train1.raw)
+Train1.GSE19738.df= Train1.GSE19738.df[-c(1:4),]
+class(Train1.GSE19738.df)="numeric"
+Train1.GSE19738.df=log2(Train1.GSE19738.df)
+
+# Check for rows with negative values
+abc=apply(Train1.GSE19738.df, 1, function(row) any(row<0))
+length(which(abc)) # 400 rows with negative values
+
+Train1.GSE19738.df[Train1.GSE19738.df<0]=0
+
+# Normalize
+Train1.GSE19738.qnorm=normalize.quantiles(Train1.GSE19738.df, copy = T)
+boxplot(Train1.GSE19738.qnorm)
+
+# Save targets
+Train1.GSE19738.targets= normalize.quantiles.determine.target(Train1.GSE19738.qnorm,target.length=NULL,subset=NULL)
+
+# Add column and row names from original data
+dimnames(Train1.GSE19738.qnorm)=dimnames(Train1.GSE19738.df)
+
+# Add back the pheno-data
+
+Train1.GSE19738.qnorm.ph= rbind(Train1.GSE19738.qnorm, t(labels.Train1.GSE19738))
+#View(Train1.GSE38481.qnorm.ph)
+
+# b. Test data
+Test1.GSE19738.df=t(GSE19738.Test1.raw)
+Test1.GSE19738.df= Test1.GSE19738.df[-c(1:4),]
+class(Test1.GSE19738.df)="numeric"
+Test1.GSE19738.df=log2(Test1.GSE19738.df)
+
+# Check for rows with negative values
+abc=apply(Test1.GSE19738.df, 1, function(row) any(row<0))
+length(which(abc)) # 101 rows with negative values
+
+Test1.GSE19738.df[Test1.GSE19738.df<0]=0
+
+# Normalize
+
+Test1.GSE19738.qnorm <- normalize.quantiles.use.target(Test1.GSE19738.df,Train1.GSE19738.targets,copy=TRUE,subset=NULL)
+
+boxplot(Test1.GSE19738.qnorm)
+
+# Add column and row names from the original data
+dimnames(Test1.GSE19738.qnorm)=dimnames(Test1.GSE19738.df)
+
+# Add back the pheno-data
+
+Test1.GSE19738.qnorm.ph= rbind(Test1.GSE19738.qnorm, t(labels.Test1.GSE19738))
+
+
+Train1.qnorm=cbind(Train11.GSE98793.qnorm.ph,Train12.GSE98793.qnorm.ph, Train1.GSE46743.qnorm.ph, Train1.GSE19738.qnorm.ph)
+#View(Train1.qnorm)
+#colnames(Train1.qnorm)
+
+Test1.qnorm=cbind(Test11.GSE98793.qnorm.ph,Test12.GSE98793.qnorm.ph ,Test1.GSE46743.qnorm.ph, Test1.GSE19738.qnorm.ph)
+#View(Test1.qnorm)
+#colnames(Test1.qnorm)
+
+# save q-normalize train and Test data
+
+Train1.qnorm.df=as.data.frame(Train1.qnorm)
+saveRDS(Train1.qnorm.df, "train1.qnorm.rds")
+
+Test1.qnorm.df=as.data.frame(Test1.qnorm)
+saveRDS(Test1.qnorm.df, "test1.qnorm.rds")
+########################################################################### batch correction ##################################################################
+library(tidyr)
+library(plyr)
+library(dplyr)
+library(tibble)
+library(sva)
+library(ggfortify)
+
+
+
+#/ Read Quantile normalized train and test data
+
+Train1.qnorm=readRDS("train1.qnorm.rds")
+test1.qnorm=readRDS("test1.qnorm.rds")
+
+# Separate the pheno-data
+
+labels.Train1= Train1.qnorm[c(11069:11072),]
+labels.test1= test1.qnorm[c(11069:11072),]
+
+#/ Train 1
+
+Train1.qnorm.df=Train1.qnorm[-c(11069:11072),]
+Train1.qnorm.mat= as.matrix(Train1.qnorm.df)
+class(Train1.qnorm.mat)="numeric"
+p.data=as.data.frame(t(labels.Train1))
+# Batch correction using ComBat
+
+
+Train1.qnorm.t= as.data.frame(t(Train1.qnorm))
+batch.train1= as.factor(Train1.qnorm.t$batch)
+modcombat.train1 = model.matrix(~1, data= as.data.frame(t(labels.Train1)))
+
+Train1.bc = ComBat(dat=Train1.qnorm.mat, batch=as.factor(p.data$batch), mod=modcombat.train1, par.prior=TRUE, prior.plots=FALSE)
+
+# Add back rows for pheno-data
+Train1.bc.ph= rbind(Train1.bc, labels.Train1)
+
+#/ PCA plot
+
+# Raw train data
+abc=prcomp(t(Train1.qnorm.mat), scale.=TRUE)
+autoplot(abc, data=t(labels.Train1), colour= "gse_id")+ theme_bw()
+
+# Batch corrected train data
+pqr=prcomp(t(Train1.bc), scale.=TRUE)
+autoplot(pqr, data=t(labels.Train1), colour= "gse_id")+ theme_bw()
+
+
+# Save batch corrected file
+saveRDS(Train1.bc.ph, "train1.batch-corrected.rds")
+
+#/ Test 1
+# Batch correct data with train data as reference
+
+# Bind train and test phdata
+test1.combat.phdata= cbind(labels.Train1, labels.test1)
+a=as.data.frame(t(test1.combat.phdata))
+a$ref.batch=8
+a$ref.batch[c(378:419)]=a$batch[c(378:419)]
+
+# Bind batch corrected train and raw test data
+
+test1.qnorm.df=test1.qnorm[-c(11069:11072),]
+test1.qnorm.mat= as.matrix(test1.qnorm.df)
+class(test1.qnorm.mat)="numeric"
+test1.combat.data=cbind(Train1.bc,test1.qnorm.mat)
+
+# Batch correction
+labels.test.t= as.data.frame(t(labels.test1))
+batch.test1=a$ref.batch
+modcombat.test1 = model.matrix(~1, data=a)
+
+
+combat.test1 = ComBat(dat=test1.combat.data, batch=batch.test1, mod=modcombat.test1, 
+                      par.prior=TRUE, prior.plots=FALSE, ref.batch = 8 )
+
+test1.bc = combat.test1[,colnames(test1.qnorm)]# test.qnorm has sample ids
+dim(test1.bc)# Batch corrected test data
+
+# Add back rows for labels
+test1.bc.ph= rbind(test1.bc, labels.test1)
+
+# PCA plot
+a$ref.info="train"
+a$ref.info[378:419]=a$gse_id[378:419]
+# Raw test data
+abc=prcomp(t(test1.combat.data), scale.=TRUE)
+autoplot(abc, data= a, colour= "ref.info")+ theme_bw()
+
+# Batch corrected test data
+pqr=prcomp(t(combat.test1), scale.=TRUE)
+autoplot(pqr, data=a, colour= "ref.info")+ theme_bw()
+# Save files
+saveRDS(test1.bc.ph, "test1.batch-corrected.rds")
